@@ -1,14 +1,4 @@
-export async function request(url,method='GET',body) {
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),20000);
-  let res;
-  try{res=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:controller.signal});}
-  catch{throw Error('连接未完成，请稍后重试。');}
-  finally{clearTimeout(timer);}
-  let data;try{data=await res.json();}catch{throw Error('连接中断，请稍后重试');}
-  if(!res.ok)throw Error(data.error||'请求失败，请重试');
-  return data;
-}
+export {request,csvBlob} from './transport.js';
 export const blank=()=>({age:'',sex:'',height:'',weight:'',unit:'kg',menopause:''});
 export const fields={
   props:['entry'],
