@@ -44,7 +44,9 @@ async function save(db,raw) {
   const result=compute(raw);
   const {participant,proof,requestId}=raw;
   const proofHash=await digest(proof);
-  const submitted=await digest(JSON.stringify([participant,raw.mode,result]));
+  // Identify the submission by its normalized inputs, independent of the scoring rules.
+  const inputs=[result.age,result.sex,result.menopause,result.height,result.weight,result.unit];
+  const submitted=await digest(JSON.stringify([participant,raw.mode,...inputs]));
   const now=new Date().toISOString();
   const measures=columns.map(k=>result[k]);
   const statements=[];
@@ -54,7 +56,16 @@ async function save(db,raw) {
   const batch=await db.batch(statements);
   const saved=batch.at(-1).results[0];
   check(saved,403,'保存未完成，请核对参与者编号及复测凭证');
-  check(saved.submitted_hash===submitted,409,'本次提交标识已使用，请重新开始筛查');
+  if(saved.submitted_hash!==submitted){
+    // The previous release included the untruncated OSTA and its risk in the hash.
+    const legacy={...result};
+    if(legacy.osta!==null){
+      legacy.osta=Number(((legacy.kg-legacy.age)/5).toFixed(5));
+      legacy.risk=legacy.osta < -4 ? '高风险' : legacy.osta <= -1 ? '中风险' : '低风险';
+    }
+    const previous=await digest(JSON.stringify([participant,raw.mode,legacy]));
+    check(saved.submitted_hash===previous,409,'本次提交标识已使用，请重新开始筛查');
+  }
   return response({participant,saved:true});
 }
 function filter(params) {
@@ -75,20 +86,33 @@ function filter(params) {
   check(!(params.get('from')&&params.get('to')&&params.get('from')>params.get('to')),422,'起始日期不能晚于结束日期');
   return {where:clauses.length?' WHERE '+clauses.join(' AND '):'',bindings};
 }
+// Project historical fractional scores to the same integer used for new screenings.
+// Ranking, filtering, totals and CSV must all see the same corrected risk.
+const reportedRows=`WITH scored AS (
+  SELECT rowid AS rid,id,participant,created,updated,age,sex,menopause,height,weight,unit,kg,
+         CAST(osta AS INTEGER) AS osta,risk AS recorded_risk,reason,bmi,category,follow,version
+  FROM screenings
+), reported AS (
+  SELECT *, CASE WHEN osta IS NULL THEN recorded_risk WHEN osta < -4 THEN '高风险'
+                 WHEN osta <= -1 THEN '中风险' ELSE '低风险' END AS risk
+  FROM scored
+), latest AS (
+  SELECT * FROM (SELECT *,ROW_NUMBER() OVER (
+    PARTITION BY participant ORDER BY created DESC,rid DESC
+  ) AS pos FROM reported) WHERE pos=1
+) `;
 function recordSource(params) {
-  if(params.get('latest')!=='1') return 'screenings';
-  return '(SELECT * FROM (SELECT s.*,s.rowid AS rid,ROW_NUMBER() OVER (PARTITION BY participant ORDER BY created DESC,s.rowid DESC) AS pos FROM screenings s) WHERE pos=1)';
+  return params.get('latest')==='1' ? 'latest' : 'reported';
 }
 async function adminList(db,url) {
   const source=recordSource(url.searchParams);
-  const rowKey=source==='screenings'?'rowid':'rid';
   const {where,bindings}=filter(url.searchParams);
   const offset=Number(url.searchParams.get('offset')||0);
   check(Number.isSafeInteger(offset)&&offset>=0,400,'页码有误');
   const qs=[
-    db.prepare('SELECT '+visible+' FROM '+source+where+' ORDER BY created DESC,'+rowKey+' DESC LIMIT 100 OFFSET ?').bind(...bindings,offset),
-    db.prepare('SELECT COUNT(*) AS n FROM '+source+where).bind(...bindings),
-    db.prepare('WITH ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY participant ORDER BY created DESC,rowid DESC) AS n FROM screenings) SELECT risk,COUNT(*) AS n FROM ranked'+(where?where+' AND':' WHERE')+' n=1 GROUP BY risk').bind(...bindings)
+    db.prepare(reportedRows+'SELECT '+visible+' FROM '+source+where+' ORDER BY created DESC,rid DESC LIMIT 100 OFFSET ?').bind(...bindings,offset),
+    db.prepare(reportedRows+'SELECT COUNT(*) AS n FROM '+source+where).bind(...bindings),
+    db.prepare(reportedRows+'SELECT risk,COUNT(*) AS n FROM latest'+where+' GROUP BY risk').bind(...bindings)
   ];
   const [list,total,groups]=await db.batch(qs);
   return response({rows:list.results,total:total.results[0].n,groups:groups.results});
@@ -96,7 +120,6 @@ async function adminList(db,url) {
 async function exportRecords(db,url) {
   const {where,bindings}=filter(url.searchParams);
   const source=recordSource(url.searchParams);
-  const rowKey=source==='screenings'?'rowid':'rid';
   const condition=where ? where+' AND ' : ' WHERE ';
   const newest=await db.prepare('SELECT COALESCE(MAX(rowid),0) AS last FROM screenings').first();
   let cursor=newest.last+1;
@@ -104,7 +127,7 @@ async function exportRecords(db,url) {
   const encoder=new TextEncoder();
   const stream=new ReadableStream({
     async pull(controller) {
-      const {results}=await db.prepare('SELECT '+rowKey+' AS ordinal,'+visible+' FROM '+source+condition+rowKey+'<? ORDER BY '+rowKey+' DESC LIMIT 100').bind(...bindings,cursor).all();
+      const {results}=await db.prepare(reportedRows+'SELECT rid AS ordinal,'+visible+' FROM '+source+condition+'rid<? ORDER BY rid DESC LIMIT 100').bind(...bindings,cursor).all();
       if(!header && !results.length){controller.close();return;}
       const csv=toCsv(results);
       const chunk=header ? csv : csv.slice(csv.indexOf('\r\n')+2);

@@ -26,8 +26,8 @@ export function evaluate(data) {
     sex === '男' ? '本项目的 OSTA 筛查仅用于亚洲绝经后女性，男性请咨询医生选择评估方式。' :
     menopause === '未绝经' ? '本工具适用于绝经后女性，你填写的状态为未绝经。' :
     menopause === '不确定' ? '绝经状态尚未确定，本次不进行 OSTA 分层。' : '';
-  // The selected Chinese screening guideline applies the cutoffs to the calculated index.
-  const osta = reason ? null : Number(((kg-age)/5).toFixed(5));
+  // The OSTA research group truncates the final score toward zero (P58, HKMJ 2001).
+  const osta = reason ? null : (Math.trunc((kg - age) / 5) || 0);
   const risk = reason ? (age>=18 && menopause==='不确定' ? '暂未评估' : '不适用') : osta < -4 ? '高风险' : osta <= -1 ? '中风险' : '低风险';
   const bmi = kg*10000/(height*height);
   // Integer products keep exact decimal measurements on the correct side of each boundary.

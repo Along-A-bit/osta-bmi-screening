@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
-import {mkdir,mkdtemp,readFile,rm} from 'node:fs/promises';
-import {join,resolve} from 'node:path';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import {createRequire} from 'node:module';
 import {localServer,createLocalApp} from '../scripts/local.mjs';
 import {openDatabase} from '../scripts/sqlite.mjs';
@@ -15,8 +16,7 @@ const handle=createLocalApp(db,password);
 async function dispatch(request) {
   return handle(new Request(request.url(),{method:request.method(),headers:await request.allHeaders(),body:request.postDataBuffer()||undefined}));
 }
-await mkdir('.local',{recursive:true});
-const directory=await mkdtemp(resolve('.local','screening-qa-'));
+const directory=await mkdtemp(join(tmpdir(),'screening-qa-'));
 let browser;
 try {
   if(!offline){server.listen(0,'127.0.0.1');await once(server,'listening');}
@@ -62,7 +62,7 @@ try {
   await page.getByRole('button',{name:'重试保存'}).waitFor();
   const cards=page.locator('.metric');
   assert.match(await cards.nth(0).innerText(),/OSTA[\s\S]*-5[\s\S]*筛查风险 · 高风险/);
-  await page.getByText('查看我的体重分类',{exact:true}).click();
+  assert.ok(await cards.nth(1).getByText('体重过低',{exact:true}).isVisible());
   assert.match(await cards.nth(1).innerText(),/BMI[\s\S]*17.6[\s\S]*体重过低/);
   await page.reload();
   await page.getByRole('button',{name:'重试保存'}).click();
@@ -70,6 +70,11 @@ try {
   const id=await page.locator('.receipt code').first().textContent();
   await page.getByText('查看复测凭证').click();
   const proof=await page.locator('.receipt details code').textContent();
+  await page.getByRole('button',{name:'修改本次填写'}).click();
+  await page.getByLabel('体重',{exact:true}).fill('91');
+  await page.getByRole('button',{name:'保存本次更正'}).click();
+  await page.getByText('记录已保存',{exact:true}).waitFor();
+  assert.match(await cards.nth(0).innerText(),/-4[\s\S]*筛查风险 · 中风险/);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM screenings').first().n,1);
   await page.getByRole('button',{name:'结束并返回首页'}).click();
   await page.getByRole('radio',{name:'复测',exact:true}).check();

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {evaluate,formatBmi} from '../src/screen.js';
 
 const base={age:70,sex:'女',menopause:'已绝经',height:200,unit:'kg',weight:70};
-for (const [weight,index,risk] of [[74.5,0.9,'低风险'],[65.5,-0.9,'低风险'],[65,-1,'中风险'],[60.5,-1.9,'中风险'],[50,-4,'中风险'],[45.5,-4.9,'高风险'],[45,-5,'高风险']]) {
+for (const [weight,index,risk] of [[75,1,'低风险'],[74.5,0,'低风险'],[65.5,0,'低风险'],[65,-1,'中风险'],[60.5,-1,'中风险'],[50,-4,'中风险'],[45.5,-4,'中风险'],[45,-5,'高风险']]) {
   test('OSTA '+weight+' kg → '+index+' '+risk,()=>{
     const result=evaluate({...base,weight});
     assert.equal(result.osta,index);assert.equal(result.risk,risk);

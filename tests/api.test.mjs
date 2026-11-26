@@ -102,10 +102,30 @@ test('本人更正和重试不增加记录，快捷筛选只取每人最近一�
   assert.equal((await correct(change)).status,200);
   assert.equal((await correct(change)).status,200);
   const list=await (await admin('records')).json();
-  assert.equal(list.total,1);assert.equal(list.rows[0].osta,-4.8);
+  assert.equal(list.total,1);assert.equal(list.rows[0].osta,-4);
+  assert.equal(list.rows[0].risk,'中风险');
+  await correct({...change,weight:90,version:2});
   const filter='latest=1&risk='+encodeURIComponent('高风险')+'&follow='+encodeURIComponent('待跟进');
   assert.equal((await (await admin('records?'+filter)).json()).total,1);
   await post({...first,mode:'repeat',weight:170,requestId:crypto.randomUUID()});
   assert.equal((await (await admin('records?'+filter)).json()).total,0);
   assert.equal((await (await admin('export.csv?'+filter)).text()).includes(first.participant),false);
+});
+
+test('旧版本记录按整数显示、筛选和导出，丢失回执仍可重试',async t=>{
+  const {db,first,post,admin}=await fixture(t);
+  const entry={...first,weight:91};
+  assert.equal((await post(entry)).status,200);
+  const original={age:70,sex:'女',menopause:'已绝经',height:160,weight:91,unit:'jin',kg:45.5,
+    osta:-4.9,risk:'高风险',reason:'',bmi:45.5*10000/(160*160),category:'体重过低'};
+  const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([entry.participant,entry.mode,original])));
+  db.prepare('UPDATE screenings SET osta=?,risk=?,submitted_hash=? WHERE id=?')
+    .bind(original.osta,original.risk,Buffer.from(hash).toString('hex'),entry.requestId).run();
+  assert.equal((await post(entry)).status,200);
+  assert.equal((await post({...entry,weight:92})).status,409);
+  const query='?risk='+encodeURIComponent('中风险');
+  const result=await (await admin('records'+query)).json();
+  assert.deepEqual(result.rows.map(r=>[r.osta,r.risk]),[[-4,'中风险']]);
+  assert.deepEqual(result.groups,[{risk:'中风险',n:1}]);
+  assert.ok((await (await admin('export.csv'+query)).text()).includes('"-4","中风险"'));
 });
