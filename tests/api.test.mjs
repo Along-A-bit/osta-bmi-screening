@@ -129,3 +129,21 @@ test('旧版本记录按整数显示、筛选和导出，丢失回执仍可重�
   assert.deepEqual(result.groups,[{risk:'中风险',n:1}]);
   assert.ok((await (await admin('export.csv'+query)).text()).includes('"-4","中风险"'));
 });
+
+test('生产验收编号仅限精确查询，排除于正式人数、常规列表与 CSV',async t=>{
+  const {db,first,post}=await fixture(t);
+  const real={...first,...freshAccess(),requestId:crypto.randomUUID()};
+  await post(first);await post(real);
+  const env={DB:db,ADMIN_EMAILS:'operator@example.invalid',ACCEPTANCE_PARTICIPANT_ID:first.participant};
+  const read=path=>api(new Request('https://unit.invalid/api/admin/'+path,{headers:{
+    'oai-authenticated-user-id':'test-operator','oai-authenticated-user-email':env.ADMIN_EMAILS
+  }}),env);
+  const normal=await (await read('records?latest=1')).json();
+  assert.equal(normal.total,1);assert.equal(normal.rows[0].participant,real.participant);
+  assert.deepEqual(normal.groups,[{risk:'高风险',n:1}]);
+  const csv=await (await read('export.csv')).text();
+  assert.ok(csv.includes(real.participant));assert.ok(!csv.includes(first.participant));
+  const exact=await (await read('records?participant='+first.participant)).json();
+  assert.equal(exact.acceptance,true);assert.equal(exact.rows[0].participant,first.participant);
+  assert.deepEqual(exact.groups,[]);
+});

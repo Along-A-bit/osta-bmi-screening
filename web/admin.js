@@ -2,15 +2,15 @@ import {risks,followStates,formatBmi,evaluate} from './screen.js';
 import {request,mount,when} from './base.js';
 const empty=()=>({participant:'',from:'',to:'',risk:'',follow:'',latest:''});
 mount(Vue.createApp({
-  data:()=>({allowed:false,loading:true,busy:false,error:'',filters:empty(),active:empty(),offset:0,rows:[],total:0,groups:[],record:null,entry:{},follow:'',editorMessage:'',risks,followStates,seq:0}),
+  data:()=>({allowed:false,loading:true,busy:false,error:'',filters:empty(),active:empty(),offset:0,rows:[],total:0,groups:[],acceptance:false,record:null,entry:{},follow:'',editorMessage:'',risks,followStates,seq:0}),
   async mounted(){try{await request('/api/admin/session');this.allowed=true;await this.load(true);}catch(e){this.error=e.message;}finally{this.loading=false;}},
   methods:{when,formatBmi,
     url(offset){return '/api/admin/records?'+new URLSearchParams({...this.active,offset});},
     async load(reset=false){
       if(reset){this.offset=0;this.active={...this.filters};this.record=null;}
       const seq=++this.seq;this.busy=true;this.error='';
-      try{const data=await request(this.url(this.offset));if(seq===this.seq){this.rows=data.rows;this.total=data.total;this.groups=data.groups;}}
-      catch(e){if(seq===this.seq){this.error=e.message;this.rows=[];this.total=0;this.groups=[];}}
+      try{const data=await request(this.url(this.offset));if(seq===this.seq){this.rows=data.rows;this.total=data.total;this.groups=data.groups;this.acceptance=data.acceptance;}}
+      catch(e){if(seq===this.seq){this.error=e.message;this.rows=[];this.total=0;this.groups=[];this.acceptance=false;}}
       finally{if(seq===this.seq)this.busy=false;}
     },
     page(delta){this.offset+=delta;this.load();},clear(){this.filters=empty();this.load(true);},
@@ -32,7 +32,7 @@ mount(Vue.createApp({
         if(!res.ok)throw Error(res.status===403?'请重新登录管理员账号':'导出失败，请重试');
         const url=URL.createObjectURL(await res.blob());
         const link=document.createElement('a');
-        link.href=url;link.download='筛查记录.csv';link.click();
+        link.href=url;link.download=this.acceptance?'上线验收记录.csv':'筛查记录.csv';link.click();
         setTimeout(()=>URL.revokeObjectURL(url),30000);
       }catch(e){this.error=e.message;}
       finally{this.busy=false;}

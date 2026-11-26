@@ -68,14 +68,17 @@ async function save(db,raw) {
   }
   return response({participant,saved:true});
 }
-function filter(params) {
+function filter(params,acceptanceId) {
   const clauses=[], bindings=[];
   const add=(sql,val)=>{clauses.push(sql);bindings.push(val);};
   for(const [key,allowed] of [['risk',risks],['follow',followStates]]) {
     const value=params.get(key);
     if(value){check(allowed.includes(value),422,'筛选条件无效');add(key+'=?',value);}
   }
-  if(params.get('participant'))add('participant=?',params.get('participant').trim().toUpperCase());
+  const participant=params.get('participant')?.trim().toUpperCase();
+  const acceptance=Boolean(acceptanceId && participant===acceptanceId);
+  if(participant)add('participant=?',participant);
+  if(acceptanceId && !acceptance)add('participant<>?',acceptanceId);
   for(const key of ['from','to']) {
     const day=params.get(key);if(!day) continue;
     const time=Date.parse(day+'T00:00:00+08:00');
@@ -84,7 +87,7 @@ function filter(params) {
     add(key==='from'?'created>=?':'created<?',new Date(time+(key==='to'?86400000:0)).toISOString());
   }
   check(!(params.get('from')&&params.get('to')&&params.get('from')>params.get('to')),422,'起始日期不能晚于结束日期');
-  return {where:clauses.length?' WHERE '+clauses.join(' AND '):'',bindings};
+  return {where:clauses.length?' WHERE '+clauses.join(' AND '):'',bindings,acceptance};
 }
 // Project historical fractional scores to the same integer used for new screenings.
 // Ranking, filtering, totals and CSV must all see the same corrected risk.
@@ -104,9 +107,9 @@ const reportedRows=`WITH scored AS (
 function recordSource(params) {
   return params.get('latest')==='1' ? 'latest' : 'reported';
 }
-async function adminList(db,url) {
+async function adminList(db,url,acceptanceId) {
   const source=recordSource(url.searchParams);
-  const {where,bindings}=filter(url.searchParams);
+  const {where,bindings,acceptance}=filter(url.searchParams,acceptanceId);
   const offset=Number(url.searchParams.get('offset')||0);
   check(Number.isSafeInteger(offset)&&offset>=0,400,'页码有误');
   const qs=[
@@ -115,10 +118,10 @@ async function adminList(db,url) {
     db.prepare(reportedRows+'SELECT risk,COUNT(*) AS n FROM latest'+where+' GROUP BY risk').bind(...bindings)
   ];
   const [list,total,groups]=await db.batch(qs);
-  return response({rows:list.results,total:total.results[0].n,groups:groups.results});
+  return response({rows:list.results,total:total.results[0].n,groups:acceptance?[]:groups.results,acceptance});
 }
-async function exportRecords(db,url) {
-  const {where,bindings}=filter(url.searchParams);
+async function exportRecords(db,url,acceptanceId) {
+  const {where,bindings}=filter(url.searchParams,acceptanceId);
   const source=recordSource(url.searchParams);
   const condition=where ? where+' AND ' : ' WHERE ';
   const newest=await db.prepare('SELECT COALESCE(MAX(rowid),0) AS last FROM screenings').first();
@@ -173,8 +176,8 @@ export async function api(req,env) {
       if(previous.version===raw.version+1 && columns.every(k=>previous[k]===value[k]))return response({saved:true});
       return await update(env.DB,raw.requestId,{...raw,action:'correct'});
     }
-    if(p==='/api/admin/records'&&req.method==='GET')return await adminList(env.DB,url);
-    if(p==='/api/admin/export.csv'&&req.method==='GET')return await exportRecords(env.DB,url);
+    if(p==='/api/admin/records'&&req.method==='GET')return await adminList(env.DB,url,env.ACCEPTANCE_PARTICIPANT_ID);
+    if(p==='/api/admin/export.csv'&&req.method==='GET')return await exportRecords(env.DB,url,env.ACCEPTANCE_PARTICIPANT_ID);
     if(p.startsWith('/api/admin/records/')&&req.method==='PATCH')return await update(env.DB,p.split('/').at(-1),await body(req));
     return response({error:'无此接口'},404);
   } catch(err){return response({error:err instanceof Problem?err.message:'暂时无法访问数据库，请稍后重试'},err instanceof Problem?err.status:503);}
