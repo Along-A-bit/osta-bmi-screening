@@ -1,0 +1,18 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#154f43"><title>骨衡 · 骨质疏松与体重筛查</title><link rel="stylesheet" href="/vendor/vant.css"><link rel="stylesheet" href="/style.css"><script defer src="/vendor/vue.global.prod.js"></script><script defer src="/vendor/vant.min.js"></script><script type="module" src="/public.js"></script></head>
+<body><header><div class="bar"><a class="brand" href="/"><span class="mark" aria-hidden="true">✳</span> 骨衡</a><span class="line"></span><span>健康筛查</span><a class="tail" href="/admin">管理入口</a></div></header>
+<main id="app" v-cloak><div class="layout"><aside class="intro"><div class="eyebrow">OSTA <i></i> BMI</div><h1>骨质疏松与<br>体重筛查</h1><p>填写一次，分别了解骨质疏松筛查风险和体重分类。</p>
+<div class="guide"><div><strong>骨质疏松风险</strong><small>亚洲绝经后女性适用</small></div><div><strong>体重分类</strong><small>按中国成人 BMI 标准判定</small></div></div>
+<small class="aside-foot">结果用于健康筛查，诊断需结合医生评估。</small></aside>
+<section class="card" v-if="!result"><p class="kicker">筛查表</p><h2>填写基本信息</h2>
+<form @submit.prevent="submit"><fieldset v-if="!editing" class="mode"><legend>筛查类型</legend><div class="choices"><label v-for="m in [['new','初次筛查'],['repeat','复测']]" :class="{selected:mode===m[0]}"><input type="radio" v-model="mode" :value="m[0]">{{m[1]}}</label></div></fieldset>
+<template v-if="!editing && mode==='repeat'"><label>参与者编号<input aria-label="参与者编号" v-model.trim="access.participant" required autocomplete="off" placeholder="P 开头的编号"></label><label>复测凭证<input aria-label="复测凭证" v-model.trim="access.proof" required autocomplete="off" placeholder="上次保存的复测凭证"></label></template>
+<measurement-fields :entry="entry"></measurement-fields>
+<p class="usage">提交后将保存本次筛查，供工作人员查看和随访。</p>
+<p role="alert" class="error" v-if="error">{{error}}</p><van-button native-type="submit" block type="primary" size="large" :loading="editing && status==='busy'">{{editing?'保存本次更正':'查看筛查结果'}}</van-button></form></section>
+<section class="card results" v-else aria-live="polite"><p class="kicker">筛查结果</p><h2 tabindex="-1" id="result-title">你的筛查结果</h2>
+<article class="metric"><div class="metric-head"><h3>骨质疏松风险</h3><span>OSTA</span></div><div class="score"><strong>{{result.osta ?? '—'}}</strong><span :class="['badge',result.risk]">{{result.risk==='不适用'?'本次不适用':result.risk==='暂未评估'?'暂未评估':'筛查风险 · '+result.risk}}</span></div><p>{{result.reason||advice[result.risk]}}</p></article>
+<article class="metric"><div class="metric-head"><h3>体重分类</h3><span>BMI</span></div><div class="score"><strong>{{formatBmi(result.bmi)}}</strong><small>kg/m²</small><span class="badge">{{result.category}}</span></div><p>{{result.age<18?'未满18周岁，仅展示计算值。':'按未四舍五入的 BMI 判定。成人分类不适用于孕产妇、运动员等特殊人群。'}}</p></article>
+<div class="receipt" role="status"><b>{{status==='ok'?'记录已保存':status==='busy'?'正在保存记录…':'保存状态待确认'}}</b><p v-if="status==='fail'">{{error}}</p><van-button v-if="status==='fail'" type="primary" @click="persist">重试保存</van-button>
+<template v-if="status==='ok'"><p>再次筛查时选择“复测”，填写下面两项。请自行保存。</p><div>参与者编号 <code>{{pending.participant}}</code></div><details><summary>查看复测凭证</summary><code>{{pending.proof}}</code></details><button type="button" class="link" @click="copyAccess">复制编号和凭证</button><small>{{copyMessage}}</small></template></div>
+<button class="secondary" v-if="status==='ok'" @click="editCurrent">修改本次填写</button> <button class="secondary" v-if="status!=='busy'" @click="restart">{{status==='ok'?'结束并返回首页':'返回填写'}}</button></section>
+</div></main><noscript>请启用 JavaScript 以填写筛查表。</noscript><footer>骨衡 · 骨质疏松与体重筛查</footer></body></html>
