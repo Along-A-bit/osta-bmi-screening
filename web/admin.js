@@ -1,5 +1,5 @@
 import {risks,followStates,formatBmi,evaluate} from './screen.js';
-import {request,mount,when} from './base.js';
+import {request,csvBlob,mount,when} from './base.js';
 const empty=()=>({participant:'',from:'',to:'',risk:'',follow:'',latest:''});
 mount(Vue.createApp({
   data:()=>({allowed:false,loading:true,busy:false,error:'',filters:empty(),active:empty(),offset:0,rows:[],total:0,groups:[],acceptance:false,record:null,entry:{},follow:'',editorMessage:'',risks,followStates,seq:0}),
@@ -28,9 +28,7 @@ mount(Vue.createApp({
     async download(){
       this.busy=true;this.error='';
       try{
-        const res=await fetch('/api/admin/export.csv?'+new URLSearchParams(this.active),{cache:'no-store'});
-        if(!res.ok)throw Error(res.status===403?'请重新登录管理员账号':'导出失败，请重试');
-        const url=URL.createObjectURL(await res.blob());
+        const url=URL.createObjectURL(await csvBlob(this.active));
         const link=document.createElement('a');
         link.href=url;link.download=this.acceptance?'上线验收记录.csv':'筛查记录.csv';link.click();
         setTimeout(()=>URL.revokeObjectURL(url),30000);
