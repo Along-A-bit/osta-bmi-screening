@@ -1,6 +1,6 @@
 import {risks,followStates,formatBmi,evaluate} from './screen.js';
 import {request,mount,when} from './base.js';
-const empty=()=>({participant:'',from:'',to:'',risk:'',follow:''});
+const empty=()=>({participant:'',from:'',to:'',risk:'',follow:'',latest:''});
 mount(Vue.createApp({
   data:()=>({allowed:false,loading:true,busy:false,error:'',filters:empty(),active:empty(),offset:0,rows:[],total:0,groups:[],record:null,entry:{},follow:'',editorMessage:'',risks,followStates,seq:0}),
   async mounted(){try{await request('/api/admin/session');this.allowed=true;await this.load(true);}catch(e){this.error=e.message;}finally{this.loading=false;}},
@@ -14,6 +14,7 @@ mount(Vue.createApp({
       finally{if(seq===this.seq)this.busy=false;}
     },
     page(delta){this.offset+=delta;this.load();},clear(){this.filters=empty();this.load(true);},
+    pendingRisk(){this.filters={...empty(),latest:'1',risk:'高风险',follow:'待跟进'};this.load(true);},
     history(id){this.filters={...empty(),participant:id};this.load(true);},
     edit(r){this.record={...r};this.entry={...r};this.follow=r.follow;this.editorMessage='';this.$nextTick(()=>document.querySelector('#editor')?.scrollIntoView({block:'start'}));},
     async change(action){

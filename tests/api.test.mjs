@@ -93,3 +93,19 @@ test('CSV 跨分页的导出保留每条记录',async t=>{
   assert.equal((await lines()).length,101);
   insert.bind(...keys.map(k=>k==='id'?crypto.randomUUID():measurements[k])).run();assert.equal((await lines()).length,102);
 });
+
+test('本人更正和重试不增加记录，快捷筛选只取每人最近一次',async t=>{
+  const {first,post,fetchPath,admin}=await fixture(t);await post(first);
+  const correct=data=>fetchPath('/api/screenings/correct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const change={...first,weight:92,version:1};
+  assert.equal((await correct({...change,proof:'0'.repeat(32)})).status,403);
+  assert.equal((await correct(change)).status,200);
+  assert.equal((await correct(change)).status,200);
+  const list=await (await admin('records')).json();
+  assert.equal(list.total,1);assert.equal(list.rows[0].osta,-4.8);
+  const filter='latest=1&risk='+encodeURIComponent('高风险')+'&follow='+encodeURIComponent('待跟进');
+  assert.equal((await (await admin('records?'+filter)).json()).total,1);
+  await post({...first,mode:'repeat',weight:170,requestId:crypto.randomUUID()});
+  assert.equal((await (await admin('records?'+filter)).json()).total,0);
+  assert.equal((await (await admin('export.csv?'+filter)).text()).includes(first.participant),false);
+});

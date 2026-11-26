@@ -75,13 +75,19 @@ function filter(params) {
   check(!(params.get('from')&&params.get('to')&&params.get('from')>params.get('to')),422,'起始日期不能晚于结束日期');
   return {where:clauses.length?' WHERE '+clauses.join(' AND '):'',bindings};
 }
+function recordSource(params) {
+  if(params.get('latest')!=='1') return 'screenings';
+  return '(SELECT * FROM (SELECT s.*,s.rowid AS rid,ROW_NUMBER() OVER (PARTITION BY participant ORDER BY created DESC,s.rowid DESC) AS pos FROM screenings s) WHERE pos=1)';
+}
 async function adminList(db,url) {
+  const source=recordSource(url.searchParams);
+  const rowKey=source==='screenings'?'rowid':'rid';
   const {where,bindings}=filter(url.searchParams);
   const offset=Number(url.searchParams.get('offset')||0);
   check(Number.isSafeInteger(offset)&&offset>=0,400,'页码有误');
   const qs=[
-    db.prepare('SELECT '+visible+' FROM screenings'+where+' ORDER BY created DESC,rowid DESC LIMIT 100 OFFSET ?').bind(...bindings,offset),
-    db.prepare('SELECT COUNT(*) AS n FROM screenings'+where).bind(...bindings),
+    db.prepare('SELECT '+visible+' FROM '+source+where+' ORDER BY created DESC,'+rowKey+' DESC LIMIT 100 OFFSET ?').bind(...bindings,offset),
+    db.prepare('SELECT COUNT(*) AS n FROM '+source+where).bind(...bindings),
     db.prepare('WITH ranked AS (SELECT *,ROW_NUMBER() OVER(PARTITION BY participant ORDER BY created DESC,rowid DESC) AS n FROM screenings) SELECT risk,COUNT(*) AS n FROM ranked'+(where?where+' AND':' WHERE')+' n=1 GROUP BY risk').bind(...bindings)
   ];
   const [list,total,groups]=await db.batch(qs);
@@ -89,6 +95,8 @@ async function adminList(db,url) {
 }
 async function exportRecords(db,url) {
   const {where,bindings}=filter(url.searchParams);
+  const source=recordSource(url.searchParams);
+  const rowKey=source==='screenings'?'rowid':'rid';
   const condition=where ? where+' AND ' : ' WHERE ';
   const newest=await db.prepare('SELECT COALESCE(MAX(rowid),0) AS last FROM screenings').first();
   let cursor=newest.last+1;
@@ -96,7 +104,7 @@ async function exportRecords(db,url) {
   const encoder=new TextEncoder();
   const stream=new ReadableStream({
     async pull(controller) {
-      const {results}=await db.prepare('SELECT rowid AS ordinal,'+visible+' FROM screenings'+condition+'rowid<? ORDER BY rowid DESC LIMIT 100').bind(...bindings,cursor).all();
+      const {results}=await db.prepare('SELECT '+rowKey+' AS ordinal,'+visible+' FROM '+source+condition+rowKey+'<? ORDER BY '+rowKey+' DESC LIMIT 100').bind(...bindings,cursor).all();
       if(!header && !results.length){controller.close();return;}
       const csv=toCsv(results);
       const chunk=header ? csv : csv.slice(csv.indexOf('\r\n')+2);
@@ -132,6 +140,16 @@ export async function api(req,env) {
     if(p.startsWith('/api/admin/')) check(isAdmin(req,env),403,'请使用已获授权的管理员账号登录');
     if(p==='/api/admin/session'&&req.method==='GET')return response({admin:true});
     if(p==='/api/screenings'&&req.method==='POST')return await save(env.DB,await body(req));
+    if(p==='/api/screenings/correct'&&req.method==='POST'){
+      const raw=await body(req);
+      check(rules.requestId.test(raw.requestId)&&rules.participant.test(raw.participant)&&rules.proof.test(raw.proof),403,'本次凭证无效');
+      const id=await env.DB.prepare('SELECT s.id FROM screenings s JOIN participants p ON s.participant=p.id WHERE s.id=? AND p.id=? AND p.proof_hash=?').bind(raw.requestId,raw.participant,await digest(raw.proof)).first();
+      check(id,403,'无法更正本次记录');
+      const previous=await env.DB.prepare('SELECT '+columns.join(',')+',version FROM screenings WHERE id=?').bind(raw.requestId).first();
+      const value=compute(raw);
+      if(previous.version===raw.version+1 && columns.every(k=>previous[k]===value[k]))return response({saved:true});
+      return await update(env.DB,raw.requestId,{...raw,action:'correct'});
+    }
     if(p==='/api/admin/records'&&req.method==='GET')return await adminList(env.DB,url);
     if(p==='/api/admin/export.csv'&&req.method==='GET')return await exportRecords(env.DB,url);
     if(p.startsWith('/api/admin/records/')&&req.method==='PATCH')return await update(env.DB,p.split('/').at(-1),await body(req));

@@ -18,6 +18,7 @@ export const fields={
   <fieldset v-if="entry.sex==='女'"><legend>是否已绝经</legend><div class="choices"><label v-for="m in ['已绝经','未绝经','不确定']" :class="{selected:entry.menopause===m}"><input type="radio" name="menopause" v-model="entry.menopause" :value="m" required>{{m}}</label></div></fieldset>
   <label>身高<div class="input"><input aria-label="身高" required type="text" inputmode="decimal" v-model="entry.height" placeholder="请输入身高"><span>厘米</span></div></label>
   <label>体重<div class="input"><input aria-label="体重" required type="text" inputmode="decimal" v-model="entry.weight" placeholder="请输入体重"><select aria-label="体重单位" v-model="entry.unit"><option value="kg">公斤</option><option value="jin">斤</option></select></div></label>
+  <p v-if="entry.unit==='jin' && Number(entry.weight)>0">相当于 {{ Number(entry.weight)/2 }} 公斤</p>
   </div>`
 };
 export function mount(app) {

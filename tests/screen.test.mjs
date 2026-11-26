@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {evaluate,formatBmi} from '../src/screen.js';
 
 const base={age:70,sex:'女',menopause:'已绝经',height:200,unit:'kg',weight:70};
-for (const [weight,index,risk] of [[74.5,0,'低风险'],[65.5,0,'低风险'],[65,-1,'中风险'],[60.5,-1,'中风险'],[50,-4,'中风险'],[45.5,-4,'中风险'],[45,-5,'高风险']]) {
+for (const [weight,index,risk] of [[74.5,0.9,'低风险'],[65.5,-0.9,'低风险'],[65,-1,'中风险'],[60.5,-1.9,'中风险'],[50,-4,'中风险'],[45.5,-4.9,'高风险'],[45,-5,'高风险']]) {
   test('OSTA '+weight+' kg → '+index+' '+risk,()=>{
     const result=evaluate({...base,weight});
     assert.equal(result.osta,index);assert.equal(result.risk,risk);
@@ -20,7 +20,7 @@ for (const [weight,category] of [[73.999,'体重过低'],[74,'体重正常'],[95
 }
 for (const [input,reason] of [[{sex:'男'},'男性'],[{menopause:'未绝经'},'未绝经'],[{menopause:'不确定'},'未确定'],[{age:17},'未满18']]) {
   test('OSTA 不适用：'+reason,()=>{
-    const r=evaluate({...base,...input});assert.equal(r.osta,null);assert.equal(r.risk,'不适用');
+    const r=evaluate({...base,...input});assert.equal(r.osta,null);assert.equal(r.risk,input.menopause==='不确定'?'暂未评估':'不适用');
     assert.ok(r.reason.includes(reason));assert.equal(r.category,input.age===17?'未成年人不分级':'体重过低');
   });
 }

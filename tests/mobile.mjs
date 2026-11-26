@@ -62,6 +62,7 @@ try {
   await page.getByRole('button',{name:'重试保存'}).waitFor();
   const cards=page.locator('.metric');
   assert.match(await cards.nth(0).innerText(),/OSTA[\s\S]*-5[\s\S]*筛查风险 · 高风险/);
+  await page.getByText('查看我的体重分类',{exact:true}).click();
   assert.match(await cards.nth(1).innerText(),/BMI[\s\S]*17.6[\s\S]*体重过低/);
   await page.reload();
   await page.getByRole('button',{name:'重试保存'}).click();
