@@ -3,6 +3,10 @@ export default {
     const path=new URL(request.url).pathname;
     if(path.startsWith('/api/'))return api(request,env);
     if(!['GET','HEAD'].includes(request.method))return new Response(null,{status:405});
+    if(path==='/admin/login'||path==='/admin/logout'){
+      const gateway=path==='/admin/login'?'/signin-with-chatgpt':'/signout-with-chatgpt';
+      return new Response(null,{status:303,headers:{Location:gateway+'?return_to=%2Fadmin','Cache-Control':'no-store'}});
+    }
     const key=path==='/'?'/index.html':path==='/admin'||path==='/admin/'?'/admin.html':path;
     if(!Object.hasOwn(assets,key))return new Response('未找到页面',{status:404});
     const mime=key.endsWith('.css')?'text/css':key.endsWith('.js')?'text/javascript':key.endsWith('.txt')?'text/plain':'text/html';

@@ -86,8 +86,8 @@ try {
   assert.match(await cards.nth(0).innerText(),/筛查风险 · 低风险/);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.goto(origin+'/admin');
-  await page.getByRole('link',{name:'使用 ChatGPT 账号登录'}).click();
-  await page.getByLabel('本地管理员口令').fill(password);
+  await page.getByRole('link',{name:'登录管理后台'}).click();
+  await page.getByLabel('管理员口令').fill(password);
   await page.getByRole('button',{name:'登录',exact:true}).click();
   await page.getByRole('heading',{name:'筛查记录',exact:true}).waitFor();
   await page.locator('.row').nth(1).waitFor();

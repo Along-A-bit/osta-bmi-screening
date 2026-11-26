@@ -37,7 +37,17 @@ node scripts/local.mjs
 
 本地地址为 `http://127.0.0.1:4173`。可在启动前通过进程环境设置仅供本地使用的 `LOCAL_ADMIN_PASSWORD`，然后从管理入口登录。未设置时本地管理员登录关闭。本地数据库位于已被 Git 忽略的 `.local/`。自动化测试使用内存数据库和临时生成的口令。浏览器测试可使用 Playwright 1.57.0 和 Chromium，运行 `node tests/mobile.mjs`。也可用 `BROWSER_PATH` 指定已安装 Chrome 的可执行文件。
 
-## 正式部署与二维码
+## Railway 独立托管
+
+使用同一套中文页面、计算和后台。Railway 上的参与者直接打开 HTTPS 首页，管理员从 `/admin` 输入口令。服务进程内验证登录并签发一小时的安全 Cookie。进程重启后管理员重新登录，SQLite 记录保存在服务挂载的持久卷中。
+
+1. 在 Railway 新建服务，选择本仓库实际包含 Dockerfile 的分支，挂载持久卷到 `/data`，保留单实例；控制台 Networking 中选择 Generate Domain，容器端口默认 8080。Railway 自动提供公开域名与卷挂载路径。
+2. 在该服务的 Variables 设置至少 16 个字符的随机 `ADMIN_PASSWORD` 并部署。管理员从服务所有者获取口令。平台在入口处理 HTTPS；数据库和口令仅在服务端使用。
+3. 从微信打开平台分配的首页，提交测试资料并记下编号。在后台按编号核对，确认后再生成正式二维码。如果本次使用模拟资料，可在服务端将该编号设为 `ACCEPTANCE_PARTICIPANT_ID` 并重新部署，排除在常规统计之外。
+
+本次迁移启用空库，旧站的历史记录留在原数据库。持久卷随服务重启保留，请勿删除卷。免费套餐受用量额度限制，使用方可在 Railway 的 Usage 页面查看。
+
+## Sites 部署与二维码
 
 1. 使用 `.openai/hosting.json` 绑定的 ChatGPT Sites 项目。配置服务端机密环境变量 `ADMIN_EMAILS` 为受权管理员的 ChatGPT 登录邮箱，多个邮箱以英文逗号分隔。保留 D1 绑定 `DB`，随首次部署应用 `drizzle/0000_screening.sql`。
 2. 在允许访问 Sites 源代码服务的环境中，将同一版本同步到该站点的源分支，运行 `node scripts/build.mjs` 并发布 Worker。站点访问范围需允许公众匿名打开筛查首页；后台 API 继续执行身份核验。
